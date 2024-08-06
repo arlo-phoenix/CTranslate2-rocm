@@ -1211,6 +1211,7 @@ namespace ctranslate2 {
   DECLARE_IMPL_NO_FLOAT(int16_t)
   DECLARE_IMPL_NO_FLOAT(int32_t)
   DECLARE_IMPL_NO_FLOAT(float16_t)
+  #ifndef CT2_USE_HIP//TODO
   DECLARE_IMPL_NO_FLOAT(bfloat16_t)
-
+  #endif
 }

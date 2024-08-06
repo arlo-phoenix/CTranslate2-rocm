@@ -30,95 +30,83 @@ namespace ctranslate2 {
       const int out_channels = weight.dim(0);
       const int kernel_size = weight.dim(2);
 
-      cudnnDataType_t data_type = cuda::get_cudnn_data_type(input.dtype());
+      miopenDataType_t data_type = cuda::get_cudnn_data_type(input.dtype());
 
-      cudnnTensorDescriptor_t input_desc;
-      CUDNN_CHECK(cudnnCreateTensorDescriptor(&input_desc));
-      CUDNN_CHECK(cudnnSetTensor4dDescriptor(input_desc, CUDNN_TENSOR_NCHW, data_type,
+      miopenTensorDescriptor_t input_desc;
+      CUDNN_CHECK(miopenCreateTensorDescriptor(&input_desc));
+      CUDNN_CHECK(miopenSet4dTensorDescriptor(input_desc, data_type,
                                              batch_size, in_channels, 1, input_length));
 
-      cudnnTensorDescriptor_t output_desc;
-      CUDNN_CHECK(cudnnCreateTensorDescriptor(&output_desc));
-      CUDNN_CHECK(cudnnSetTensor4dDescriptor(output_desc, CUDNN_TENSOR_NCHW, data_type,
+      miopenTensorDescriptor_t output_desc;
+      CUDNN_CHECK(miopenCreateTensorDescriptor(&output_desc));
+      CUDNN_CHECK(miopenSet4dTensorDescriptor(output_desc, data_type,
                                              batch_size, out_channels, 1, output_length));
 
-      cudnnFilterDescriptor_t weight_desc;
-      CUDNN_CHECK(cudnnCreateFilterDescriptor(&weight_desc));
-      CUDNN_CHECK(cudnnSetFilter4dDescriptor(weight_desc, data_type, CUDNN_TENSOR_NCHW,
+      miopenTensorDescriptor_t weight_desc;
+      CUDNN_CHECK(miopenCreateTensorDescriptor(&weight_desc));
+      CUDNN_CHECK(miopenSet4dTensorDescriptor(weight_desc, data_type,
                                              out_channels, in_channels, 1, kernel_size));
 
-      cudnnConvolutionDescriptor_t conv_desc;
-      CUDNN_CHECK(cudnnCreateConvolutionDescriptor(&conv_desc));
-      CUDNN_CHECK(cudnnSetConvolution2dDescriptor(conv_desc,
+      miopenConvolutionDescriptor_t conv_desc;
+      CUDNN_CHECK(miopenCreateConvolutionDescriptor(&conv_desc));
+      CUDNN_CHECK(miopenInitConvolutionDescriptor(conv_desc,
+                                                  miopenConvolution,
                                                   /*pad_h=*/0, /*pad_w=*/_padding,
                                                   /*stride_h=*/1, /*stride_w=*/_stride,
-                                                  /*dilation_h=*/1, /*dilation_w=*/_dilation,
-                                                  CUDNN_CROSS_CORRELATION,
-                                                  CUDNN_DATA_FLOAT));
+                                                  /*dilation_h=*/1, /*dilation_w=*/_dilation
+                                                  ));
 
-      CUDNN_CHECK(cudnnSetConvolutionMathType(conv_desc, CUDNN_DEFAULT_MATH));
-      if (data_type == CUDNN_DATA_HALF)
-        CUDNN_CHECK(cudnnSetConvolutionMathType(conv_desc, CUDNN_TENSOR_OP_MATH));
+      miopenHandle_t handle = cuda::get_cudnn_handle();
 
-      cudnnHandle_t handle = cuda::get_cudnn_handle();
-
-      cudnnConvolutionFwdAlgo_t algo = (bias
-                                        ? CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM
-                                        : CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM);
+      miopenConvFwdAlgorithm_t algo = (bias
+                                        ? miopenConvolutionFwdAlgoImplicitGEMM 
+                                        : miopenConvolutionFwdAlgoGEMM);
 
       size_t workspace_size = 0;
       void* workspace = nullptr;
-      CUDNN_CHECK(cudnnGetConvolutionForwardWorkspaceSize(handle,
+      CUDNN_CHECK(miopenConvolutionForwardGetWorkSpaceSize(handle,
                                                           input_desc,
                                                           weight_desc,
                                                           conv_desc,
                                                           output_desc,
-                                                          algo,
                                                           &workspace_size));
 
       if (workspace_size > 0)
         workspace = get_allocator<Device::CUDA>().allocate(workspace_size);
 
+      {
+      miopenConvAlgoPerf_t convForwardAlgos;
+      int algoCount = 1;
+      CUDNN_CHECK(miopenFindConvolutionForwardAlgorithm(handle,
+                                            input_desc,
+                                            input.buffer(),
+                                            weight_desc,
+                                            weight.buffer(),
+                                            conv_desc,
+                                            output_desc,
+                                            output.buffer(),
+                                            algoCount,
+                                            &algoCount,
+                                            &convForwardAlgos,
+                                            workspace,
+                                            workspace_size,
+                                            false //exhaustive_search
+      ));
+      if(algoCount <= 0)
+        THROW_RUNTIME_ERROR("Couldn't find any forward algorithm for requested tensors.");
+
+      algo = convForwardAlgos.fwd_algo;
+      }
+
       float alpha = 1;
       float beta = 0;
-
       if (bias) {
-        cudnnTensorDescriptor_t bias_desc;
-        CUDNN_CHECK(cudnnCreateTensorDescriptor(&bias_desc));
-        CUDNN_CHECK(cudnnSetTensor4dDescriptor(bias_desc, CUDNN_TENSOR_NCHW, data_type,
+        miopenTensorDescriptor_t bias_desc;
+        CUDNN_CHECK(miopenCreateTensorDescriptor(&bias_desc));
+        CUDNN_CHECK(miopenSet4dTensorDescriptor(bias_desc, data_type,
                                                1, out_channels, 1, 1));
 
-        cudnnActivationDescriptor_t activation_desc;
-        CUDNN_CHECK(cudnnCreateActivationDescriptor(&activation_desc));
-        CUDNN_CHECK(cudnnSetActivationDescriptor(activation_desc,
-                                                 CUDNN_ACTIVATION_IDENTITY,
-                                                 CUDNN_NOT_PROPAGATE_NAN,
-                                                 /*coef=*/0));
-
-        CUDNN_CHECK(cudnnConvolutionBiasActivationForward(handle,
-                                                          &alpha,
-                                                          input_desc,
-                                                          input.buffer(),
-                                                          weight_desc,
-                                                          weight.buffer(),
-                                                          conv_desc,
-                                                          algo,
-                                                          workspace,
-                                                          workspace_size,
-                                                          &beta,
-                                                          output_desc,
-                                                          output.buffer(),
-                                                          bias_desc,
-                                                          bias->buffer(),
-                                                          activation_desc,
-                                                          output_desc,
-                                                          output.buffer()));
-
-        CUDNN_CHECK(cudnnDestroyActivationDescriptor(activation_desc));
-        CUDNN_CHECK(cudnnDestroyTensorDescriptor(bias_desc));
-
-      } else {
-        CUDNN_CHECK(cudnnConvolutionForward(handle,
+        CUDNN_CHECK(miopenConvolutionForward(handle,
                                             &alpha,
                                             input_desc,
                                             input.buffer(),
@@ -126,20 +114,45 @@ namespace ctranslate2 {
                                             weight.buffer(),
                                             conv_desc,
                                             algo,
-                                            workspace,
-                                            workspace_size,
                                             &beta,
                                             output_desc,
-                                            output.buffer()));
+                                            output.buffer(),
+                                            workspace,
+                                            workspace_size));
+
+        CUDNN_CHECK(miopenConvolutionForwardBias(handle,
+                                         &alpha,
+                                         bias_desc,
+                                         bias->buffer(),
+                                         &beta,
+                                         output_desc,
+                                         output.buffer()));
+
+        CUDNN_CHECK(miopenDestroyTensorDescriptor(bias_desc));
+      } else {
+        CUDNN_CHECK(miopenConvolutionForward(handle,
+                                            &alpha,
+                                            input_desc,
+                                            input.buffer(),
+                                            weight_desc,
+                                            weight.buffer(),
+                                            conv_desc,
+                                            algo,
+                                            &beta,
+                                            output_desc,
+                                            output.buffer(),
+                                            workspace,
+                                            workspace_size));
+      
       }
 
       if (workspace)
         get_allocator<Device::CUDA>().free(workspace);
 
-      CUDNN_CHECK(cudnnDestroyConvolutionDescriptor(conv_desc));
-      CUDNN_CHECK(cudnnDestroyFilterDescriptor(weight_desc));
-      CUDNN_CHECK(cudnnDestroyTensorDescriptor(input_desc));
-      CUDNN_CHECK(cudnnDestroyTensorDescriptor(output_desc));
+      CUDNN_CHECK(miopenDestroyConvolutionDescriptor(conv_desc));
+      CUDNN_CHECK(miopenDestroyTensorDescriptor(weight_desc));
+      CUDNN_CHECK(miopenDestroyTensorDescriptor(input_desc));
+      CUDNN_CHECK(miopenDestroyTensorDescriptor(output_desc));
 #endif
     }
 
@@ -153,7 +166,8 @@ namespace ctranslate2 {
 
     DECLARE_IMPL(float)
     DECLARE_IMPL(float16_t)
+    #if CUDA_CAN_USE_BF16_MATH
     DECLARE_IMPL(bfloat16_t)
-
+    #endif
   }
 }

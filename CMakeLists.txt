@@ -14,6 +14,7 @@ option(WITH_OPENBLAS "Compile with OpenBLAS backend" OFF)
 option(WITH_RUY "Compile with Ruy backend" OFF)
 option(WITH_CUDA "Compile with CUDA backend" OFF)
 option(WITH_CUDNN "Compile with cuDNN backend" OFF)
+option(WITH_HIP "Compile with HIP backend" OFF)
 option(CUDA_DYNAMIC_LOADING "Dynamically load CUDA libraries at runtime" OFF)
 option(ENABLE_CPU_DISPATCH "Compile CPU kernels for multiple ISA and dispatch at runtime" ON)
 option(ENABLE_PROFILING "Compile with profiling support" OFF)
@@ -194,6 +195,58 @@ set(SOURCES
   src/utils.cc
   src/vocabulary.cc
   src/vocabulary_map.cc
+)
+set(CPU_SOURCES
+  src/cpu/allocator.cc
+  src/cpu/backend.cc
+  src/cpu/cpu_info.cc
+  src/cpu/cpu_isa.cc
+  src/cpu/kernels.cc
+  src/cpu/parallel.cc
+  src/cpu/primitives.cc
+  src/ops/alibi_add_cpu.cc
+  src/ops/bias_add_cpu.cc
+  src/ops/concat_split_slide_cpu.cc
+  src/ops/conv1d_cpu.cc
+  src/ops/dequantize_cpu.cc
+  src/ops/gather_cpu.cc
+  src/ops/gumbel_max_cpu.cc
+  src/ops/layer_norm_cpu.cc
+  src/ops/mean_cpu.cc
+  src/ops/multinomial_cpu.cc
+  src/ops/quantize_cpu.cc
+  src/ops/rms_norm_cpu.cc
+  src/ops/rotary_cpu.cc
+  src/ops/softmax_cpu.cc
+  src/ops/tile_cpu.cc
+  src/ops/topk_cpu.cc
+  src/ops/topp_mask_cpu.cc
+  src/ops/nccl_ops_cpu.cc
+)
+
+set(CUDA_SOURCES
+  src/cuda/allocator.cc
+  src/cuda/primitives.cu
+  src/cuda/random.cu
+  src/cuda/utils.cc
+  src/ops/alibi_add_gpu.cu
+  src/ops/bias_add_gpu.cu
+  src/ops/concat_split_slide_gpu.cu
+  src/ops/conv1d_gpu.cu
+  src/ops/dequantize_gpu.cu
+  src/ops/gather_gpu.cu
+  src/ops/gumbel_max_gpu.cu
+  src/ops/layer_norm_gpu.cu
+  src/ops/mean_gpu.cu
+  src/ops/multinomial_gpu.cu
+  src/ops/rms_norm_gpu.cu
+  src/ops/rotary_gpu.cu
+  src/ops/softmax_gpu.cu
+  src/ops/tile_gpu.cu
+  src/ops/topk_gpu.cu
+  src/ops/topp_mask_gpu.cu
+  src/ops/quantize_gpu.cu
+  src/ops/nccl_ops_gpu.cu
 )
 set(LIBRARIES
   ${CMAKE_THREAD_LIBS_INIT}
@@ -522,33 +575,63 @@ if (WITH_CUDA)
   set(CUDA_LINK_LIBRARIES_KEYWORD PRIVATE)
   cuda_add_library(${PROJECT_NAME}
     ${SOURCES}
-    src/cuda/allocator.cc
-    src/cuda/primitives.cu
-    src/cuda/random.cu
-    src/cuda/utils.cc
-    src/ops/alibi_add_gpu.cu
-    src/ops/bias_add_gpu.cu
-    src/ops/concat_split_slide_gpu.cu
-    src/ops/conv1d_gpu.cu
-    src/ops/dequantize_gpu.cu
-    src/ops/gather_gpu.cu
-    src/ops/gumbel_max_gpu.cu
-    src/ops/layer_norm_gpu.cu
-    src/ops/mean_gpu.cu
-    src/ops/multinomial_gpu.cu
-    src/ops/rms_norm_gpu.cu
-    src/ops/rotary_gpu.cu
-    src/ops/softmax_gpu.cu
-    src/ops/tile_gpu.cu
-    src/ops/topk_gpu.cu
-    src/ops/topp_mask_gpu.cu
-    src/ops/quantize_gpu.cu
-    src/ops/nccl_ops_gpu.cu
+    ${CUDA_SOURCES}
   )
-elseif(WITH_CUDNN)
-  message(FATAL_ERROR "WITH_CUDNN=ON requires WITH_CUDA=ON")
-else()
-  add_library(${PROJECT_NAME} ${SOURCES})
+endif()
+
+if (WITH_HIP)
+  enable_language(HIP)
+  set(CMAKE_CXX_STANDARD_REQUIRED ON)
+  message(STATUS "HIP Compiler: ${CMAKE_HIP_COMPILER}")
+  #add_definitions(-D_GLIBCXX_USE_CXX11_ABI=0)
+  if(NOT DEFINED ENV{ROCM_PATH})
+    set(ROCM_PATH /opt/rocm)
+  else()
+    set(ROCM_PATH $ENV{ROCM_PATH})
+  endif()
+  list(APPEND CMAKE_PREFIX_PATH ${ROCM_PATH})
+
+  find_package(hiprand REQUIRED)
+  find_package(hipblas REQUIRED)
+  find_package(rocprim REQUIRED)
+  find_package(rocthrust REQUIRED)
+  find_package(hipcub REQUIRED)
+  
+  #TODO: properly separate files that need hip compiler
+  #set_source_files_properties(${SOURCES} PROPERTIES LANGUAGE HIP)
+  set_source_files_properties(${CUDA_SOURCES} PROPERTIES LANGUAGE HIP)
+  set_source_files_properties(${CPU_SOURCES} PROPERTIES LANGUAGE CXX)
+  link_directories(${ROCM_PATH}/lib)
+
+  add_definitions(-DCT2_WITH_CUDA)
+  add_definitions(-DCT2_USE_HIP)
+
+  add_library(${PROJECT_NAME}
+    ${SOURCES}
+    ${CUDA_SOURCES}
+  )
+
+  add_compile_definitions(__HIP_PLATFORM_AMD__)
+  add_compile_definitions(__HIP_PLATFORM_HCC__)
+  target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/include ${ROCM_PATH}/include /include)
+  target_link_libraries(${PROJECT_NAME} PRIVATE hiprand roc::hipblas roc::rocprim roc::rocthrust hip::hipcub)
+
+  if(WITH_CUDNN)
+    find_package(miopen)
+    target_link_libraries(${PROJECT_NAME} PRIVATE MIOpen)	  
+    add_definitions(-DCT2_WITH_CUDNN)
+endif()
+
+  set_target_properties(${PROJECT_NAME} PROPERTIES LINKER_LANGUAGE CXX)
+  set(CMAKE_SHARED_LINKER_FLAGS "-Wl,--no-undefined") #for debug
+endif()
+
+if(NOT (WITH_CUDA OR WITH_HIP))
+  if(WITH_CUDNN)
+    message(FATAL_ERROR "WITH_CUDNN=ON requires WITH_CUDA=ON or WITH_HIP=ON")
+  else()
+    add_library(${PROJECT_NAME} ${SOURCES})
+  endif()
 endif()
 
 include(GenerateExportHeader)

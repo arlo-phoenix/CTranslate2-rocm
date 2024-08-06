@@ -22,6 +22,22 @@
 
 #else
 
+#ifdef CT2_USE_HIP
+#  define DEVICE_AND_FLOAT_DISPATCH(NAME, DEVICE, TYPE, STMTS)          \
+  switch (TYPE) {                                                       \
+    TYPE_CASE(float, DEVICE_DISPATCH(DEVICE, (STMTS)))                  \
+    TYPE_CASE(float16_t, {                                              \
+      if (DEVICE != Device::CUDA)                                       \
+        throw std::invalid_argument("FP16 " NAME " is only supported on GPU"); \
+      constexpr Device D = Device::CUDA;                                \
+      (STMTS);                                                          \
+    })                                                                  \
+    TYPE_CASE(bfloat16_t, {                                             \
+      throw std::invalid_argument("BF16 " NAME " is not supported with HIP."); \
+    })                                                                  \
+    NON_FLOAT_CASE(NAME)                                                \
+  }
+#else
 #  define DEVICE_AND_FLOAT_DISPATCH(NAME, DEVICE, TYPE, STMTS)          \
   switch (TYPE) {                                                       \
     TYPE_CASE(float, DEVICE_DISPATCH(DEVICE, (STMTS)))                  \
@@ -39,5 +55,5 @@
     })                                                                  \
     NON_FLOAT_CASE(NAME)                                                \
   }
-
+#endif
 #endif

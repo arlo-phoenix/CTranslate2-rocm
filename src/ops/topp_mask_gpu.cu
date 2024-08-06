@@ -1,6 +1,11 @@
 #include "ctranslate2/ops/topp_mask.h"
 
+#ifdef CT2_USE_HIP
+#include <hipcub/block/block_radix_sort.hpp>
+#define cub hipcub
+#else
 #include <cub/block/block_radix_sort.cuh>
+#endif 
 
 #include "cuda/helpers.h"
 
@@ -127,7 +132,8 @@ namespace ctranslate2 {
 
     DECLARE_IMPL(float)
     DECLARE_IMPL(float16_t)
+    #if CUDA_CAN_USE_BF16_MATH
     DECLARE_IMPL(bfloat16_t)
-
+    #endif
   }
 }

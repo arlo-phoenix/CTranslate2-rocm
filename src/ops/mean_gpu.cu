@@ -1,7 +1,12 @@
 #include "ctranslate2/ops/mean.h"
 
+#ifdef CT2_USE_HIP
+#include <hipcub/hipcub.hpp>
+#include <hipcub/block/block_reduce.hpp>
+#define cub hipcub
+#else
 #include <cub/block/block_reduce.cuh>
-
+#endif
 #include "type_dispatch.h"
 #include "cuda/helpers.h"
 
@@ -59,7 +64,8 @@ namespace ctranslate2 {
 
     DECLARE_IMPL(float)
     DECLARE_IMPL(float16_t)
+    #if CUDA_CAN_USE_BF16_MATH
     DECLARE_IMPL(bfloat16_t)
-
+    #endif
   }
 }

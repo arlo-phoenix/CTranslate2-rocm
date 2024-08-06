@@ -45,8 +45,9 @@ namespace ctranslate2 {
   MATCH_TYPE_AND_ENUM(int16_t, DataType::INT16);
   MATCH_TYPE_AND_ENUM(int32_t, DataType::INT32);
   MATCH_TYPE_AND_ENUM(float16_t, DataType::FLOAT16);
+  #ifdef CT2_USE_HIP
   MATCH_TYPE_AND_ENUM(bfloat16_t, DataType::BFLOAT16);
-
+  #endif
 #undef MATCH_TYPE_AND_ENUM
 
 #define TYPE_CASE(TYPE, STMTS)                  \
@@ -57,6 +58,8 @@ namespace ctranslate2 {
   }
 
 #define SINGLE_ARG(...) __VA_ARGS__
+
+#ifndef CT2_USE_HIP
 #define TYPE_DISPATCH(TYPE_ENUM, STMTS)             \
   switch (TYPE_ENUM) {                              \
     TYPE_CASE(float, SINGLE_ARG(STMTS))             \
@@ -66,7 +69,17 @@ namespace ctranslate2 {
     TYPE_CASE(float16_t, SINGLE_ARG(STMTS))         \
     TYPE_CASE(bfloat16_t, SINGLE_ARG(STMTS))        \
   }
-
+#else
+#define TYPE_DISPATCH(TYPE_ENUM, STMTS)             \
+  switch (TYPE_ENUM) {                              \
+    TYPE_CASE(float, SINGLE_ARG(STMTS))             \
+    TYPE_CASE(int8_t, SINGLE_ARG(STMTS))            \
+    TYPE_CASE(int16_t, SINGLE_ARG(STMTS))           \
+    TYPE_CASE(int32_t, SINGLE_ARG(STMTS))           \
+    TYPE_CASE(float16_t, SINGLE_ARG(STMTS))         \
+  }
+#endif
+#ifndef CT2_USE_HIP
 #define DECLARE_ALL_TYPES(FUNC)                 \
   FUNC(float)                                   \
   FUNC(int8_t)                                  \
@@ -74,5 +87,12 @@ namespace ctranslate2 {
   FUNC(int32_t)                                 \
   FUNC(float16_t)                               \
   FUNC(bfloat16_t)
-
+#else
+#define DECLARE_ALL_TYPES(FUNC)                 \
+  FUNC(float)                                   \
+  FUNC(int8_t)                                  \
+  FUNC(int16_t)                                 \
+  FUNC(int32_t)                                 \
+  FUNC(float16_t)
+#endif
 }

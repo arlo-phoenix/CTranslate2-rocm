@@ -7,8 +7,21 @@
 #include "cuda/utils.h"
 #include "env.h"
 
-#include <cuda.h>
-#include <cub/util_allocator.cuh>
+#ifdef CT2_USE_HIP
+  #include <hip/hip_runtime.h>
+  #include <hipcub/util_allocator.hpp>
+  #define cub hipcub
+  #define cudaGetDevice hipGetDevice
+  #define cudaSetDevice hipSetDevice
+  #define cudaFreeAsync hipFreeAsync
+  #define cudaMallocAsync hipMallocAsync
+  #define cudaDeviceGetAttribute hipDeviceGetAttribute 
+  #define cudaDevAttrMemoryPoolsSupported hipDeviceAttributeMemoryPoolsSupported
+#else
+  #include <cuda.h>
+  #include <cub/util_allocator.cuh>
+#endif
+
 #include <spdlog/spdlog.h>
 
 namespace ctranslate2 {

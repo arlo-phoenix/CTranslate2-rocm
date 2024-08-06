@@ -3,25 +3,37 @@
 #include <algorithm>
 #include <limits>
 
+#ifdef CT2_USE_HIP
+#include <hip/hip_fp16.h>
+#include <hip/hip_bf16.h>
+
+#define __nv_bfloat16 __hip_bfloat16
+__device__ inline void __syncwarp(uint32_t mask){} //TODO: 6.1 should have this but it doesn't?
+#else
 #include <cuda_fp16.h>
 #include <cuda_bf16.h>
+#endif
 
 #include "ctranslate2/types.h"
 
 #include "utils.h"
 
-#if !defined(__CUDACC__) || !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530
-#  define CUDA_CAN_USE_HALF 1
+#ifdef CT2_USE_HIP
+  #define CUDA_CAN_USE_HALF 1 //TODO: check for what supports this
+  #define CUDA_CAN_USE_BF16_MATH 0
 #else
-#  define CUDA_CAN_USE_HALF 0
-#endif
+  #if !defined(__CUDACC__) || !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530
+  #  define CUDA_CAN_USE_HALF 1
+  #else
+  #  define CUDA_CAN_USE_HALF 0
+  #endif
 
-#if defined(__CUDACC__) && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-#  define CUDA_CAN_USE_BF16_MATH 1
-#else
-#  define CUDA_CAN_USE_BF16_MATH 0
+  #if defined(__CUDACC__) && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+  #  define CUDA_CAN_USE_BF16_MATH 1
+  #else
+  #  define CUDA_CAN_USE_BF16_MATH 0
+  #endif
 #endif
-
 namespace ctranslate2 {
   namespace cuda {
 
@@ -177,6 +189,44 @@ namespace ctranslate2 {
         return lhs < rhs ? lhs : rhs;
       }
     };
+
+#ifdef CT2_USE_HIP
+    // ROCm 6.1 still doesn't have these implemented
+    template<>
+    struct plus<__hip_bfloat16> {
+      __device__ __hip_bfloat16 operator()(const __hip_bfloat16& lhs, const __hip_bfloat16& rhs) const {
+        return __hadd(lhs, rhs);
+      }
+    };
+
+    template<>
+    struct minus<__hip_bfloat16> {
+      __device__ __hip_bfloat16 operator()(const __hip_bfloat16& lhs, const __hip_bfloat16& rhs) const {
+        return __hsub(lhs, rhs);
+      }
+    };
+
+    template<>
+    struct multiplies<__hip_bfloat16> {
+      __device__ __hip_bfloat16 operator()(const __hip_bfloat16& lhs, const __hip_bfloat16& rhs) const {
+        return __hmul(lhs, rhs);
+      }
+    };
+
+    template<>
+    struct maximum<__hip_bfloat16> {
+      __device__ __hip_bfloat16 operator()(const __hip_bfloat16& lhs, const __hip_bfloat16& rhs) const {
+        return __hmax(lhs, rhs);
+      }
+    };
+
+    template<>
+    struct minimum<__hip_bfloat16> {
+      __device__ __hip_bfloat16 operator()(const __hip_bfloat16& lhs, const __hip_bfloat16& rhs) const {
+        return __hmax(lhs, rhs);
+      }
+    };
+#endif
 
 #if !CUDA_CAN_USE_HALF
     template<>
@@ -363,7 +413,11 @@ namespace ctranslate2 {
     // https://github.com/pytorch/pytorch/blob/40eff454ce5638fbff638a7f4502e29ffb9a2f0d/aten/src/ATen/native/cuda/SoftMax.cu
     // They help define row-wise reduction where each block handles a single row.
 
-#define C10_WARP_SIZE 32
+#ifdef CT2_USE_HIP
+  #define C10_WARP_SIZE 64 //TODO: detect arch to set 32 for rdna
+#else
+  #define C10_WARP_SIZE 32
+#endif
 
     template <index_t ILP = 2>
     inline dim3 get_block_size(index_t dim_size) {
