@@ -14,9 +14,8 @@ conda activate py_3.9
 ```
 
 ```bash
-git clone https://github.com/arlo-phoenix/CTranslate2-rocm.git
+git clone https://github.com/arlo-phoenix/CTranslate2-rocm.git --recurse-submodules
 cd CTranslate2-rocm
-git checkout rocm
 CLANG_CMAKE_CXX_COMPILER=clang++ CXX=clang++ HIPCXX="$(hipconfig -l)/clang" HIP_PATH="$(hipconfig -R)"     cmake -S . -B build -DWITH_MKL=OFF -DWITH_HIP=ON -DCMAKE_HIP_ARCHITECTURES=gfx1030 -DBUILD_TESTS=ON -DWITH_CUDNN=ON
 cmake --build build -- -j16
 cd build
