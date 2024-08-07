@@ -16,7 +16,8 @@ conda activate py_3.9
 ```bash
 git clone https://github.com/arlo-phoenix/CTranslate2-rocm.git --recurse-submodules
 cd CTranslate2-rocm
-CLANG_CMAKE_CXX_COMPILER=clang++ CXX=clang++ HIPCXX="$(hipconfig -l)/clang" HIP_PATH="$(hipconfig -R)"     cmake -S . -B build -DWITH_MKL=OFF -DWITH_HIP=ON -DCMAKE_HIP_ARCHITECTURES=gfx1030 -DBUILD_TESTS=ON -DWITH_CUDNN=ON
+#export PYTORCH_ROCM_ARCH=gfx1030 #optionally set this only to your ROCm arch to speed up compiling. You can find it with rocminfo | grep gfx
+CLANG_CMAKE_CXX_COMPILER=clang++ CXX=clang++ HIPCXX="$(hipconfig -l)/clang" HIP_PATH="$(hipconfig -R)"     cmake -S . -B build -DWITH_MKL=OFF -DWITH_HIP=ON -DCMAKE_HIP_ARCHITECTURES=$PYTORCH_ROCM_ARCH -DBUILD_TESTS=ON -DWITH_CUDNN=ON
 cmake --build build -- -j16
 cd build
 cmake --install . --prefix $CONDA_PREFIX #or just sudo make install if not using conda env
