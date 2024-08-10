@@ -86,7 +86,7 @@ I'm getting around `10.9-11.0s` on my RX6800 (with model loading included `13.7-
 System dependency is just ffmpeg. Either use your system package manager or with conda `conda install conda-forge::ffmpeg`
 
 ```bash
-pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.1
+pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.1 --force-reinstall
 pip3 install transformers pandas nltk pyannote.audio==3.1.1 faster_whisper==1.0.1 -U
 pip3 install whisperX --no-deps
 ```
