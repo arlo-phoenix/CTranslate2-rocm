@@ -17,9 +17,11 @@
   #define cudaMallocAsync hipMallocAsync
   #define cudaDeviceGetAttribute hipDeviceGetAttribute 
   #define cudaDevAttrMemoryPoolsSupported hipDeviceAttributeMemoryPoolsSupported
+  #define CT2_USE_ASYNC_ALLOC true
 #else
   #include <cuda.h>
   #include <cub/util_allocator.cuh>
+  #define CT2_USE_ASYNC_ALLOC CUDA_VERSION >= 11020
 #endif
 
 #include <spdlog/spdlog.h>
@@ -76,7 +78,7 @@ namespace ctranslate2 {
     class CudaAsyncAllocator : public Allocator {
     public:
       void* allocate(size_t size, int device_index) override {
-#if CUDA_VERSION >= 11020
+#if CT2_USE_ASYNC_ALLOC
         int prev_device_index = -1;
         if (device_index >= 0) {
           CUDA_CHECK(cudaGetDevice(&prev_device_index));
@@ -99,7 +101,7 @@ namespace ctranslate2 {
       }
 
       void free(void* ptr, int device_index) override {
-#if CUDA_VERSION >= 11020
+#if CT2_USE_ASYNC_ALLOC
         int prev_device_index = -1;
         if (device_index >= 0) {
           CUDA_CHECK(cudaGetDevice(&prev_device_index));
@@ -120,7 +122,7 @@ namespace ctranslate2 {
     };
 
     static bool support_cuda_malloc_async() {
-#if CUDA_VERSION < 11020
+#if !CT2_USE_ASYNC_ALLOC
       return false;
 #else
       for (int i = 0; i < get_gpu_count(); ++i) {

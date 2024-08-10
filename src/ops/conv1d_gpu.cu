@@ -2,6 +2,10 @@
 
 #include "cuda/utils.h"
 
+//needed since apparently GetWorkspaceSize is now has context configuration https://rocm.docs.amd.com/en/latest/about/release-notes.html#miopen-3-2-0
+//and that causes the workspace_size to sometimes not be set which causes significant slowdown because of fallback when finding the algo
+size_t last_workspace_size = 0;
+
 namespace ctranslate2 {
   namespace ops {
 
@@ -58,9 +62,7 @@ namespace ctranslate2 {
 
       miopenHandle_t handle = cuda::get_cudnn_handle();
 
-      miopenConvFwdAlgorithm_t algo = (bias
-                                        ? miopenConvolutionFwdAlgoImplicitGEMM 
-                                        : miopenConvolutionFwdAlgoGEMM);
+      miopenConvFwdAlgorithm_t algo;
 
       size_t workspace_size = 0;
       void* workspace = nullptr;
@@ -70,10 +72,13 @@ namespace ctranslate2 {
                                                           conv_desc,
                                                           output_desc,
                                                           &workspace_size));
-
+      if(workspace_size <= 0)
+        workspace_size = last_workspace_size;
       if (workspace_size > 0)
+      {
         workspace = get_allocator<Device::CUDA>().allocate(workspace_size);
-
+        last_workspace_size = workspace_size;
+      }
       {
       miopenConvAlgoPerf_t convForwardAlgos;
       int algoCount = 1;
