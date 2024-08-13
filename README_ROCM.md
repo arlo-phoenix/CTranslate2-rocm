@@ -1,5 +1,10 @@
 # ROCm CT2
 
+<div align="center">
+
+[Upstream README](README.md) | **ROCm Install Guide**
+</div>
+
 ## Install Guide
 
 These install instructions are for https://hub.docker.com/r/rocm/pytorch. They should mostly work for system installs as well, but then you'll have to change install directories and make sure all dependencies are installed (in the image they are already present in the conda env)
@@ -46,8 +51,7 @@ for me only some int8 test failed (I think that test shouldn't even be run for C
 
 ### BF16 issues
 
-This fork just commented out everything related to bf16. I think an implicit conversion operator from 
-`__hip_bfloat16` to `float` is missing
+This fork just commented out everything related to bf16. I think an implicit conversion operator from  `__hip_bfloat16` to `float` is missing
 
 example error with bf16 enabled:
 ```cpp
@@ -55,7 +59,7 @@ CTranslate2/src/cuda/primitives.cu:284:19: error: no viable conversion from 'con
   284 |       const float score = previous_scores[i];
 ```
 
-Other than that I **won't** be adding FA2 or AWQ support. It's written with assembly for cuda and it isn't helpful at all for my use case (whisper). Otherwise on this older commit (besides bf16) this fork is feature complete, so I might look into cleaning it up and possibilities of disabling these for ROCm on master for upstreaming. But I'll only do that **after BF16 gets proper support** since this discrepancy adds way too many different code paths between ROCm and CUDA. Other than that conversion worked quite well, I only had to change a couple defines, otherwise it hipified well. Only the `conv1d OP` required a custom implementation for MIOpen (hipDNN isn't maintained anymore).
+Other than that I **won't** be adding FA2 or AWQ support. It's written with assembly for cuda and it isn't helpful at all for my use case (whisper). Otherwise on this older commit (besides bf16) this fork is feature complete, so I might look into cleaning it up and possibilities of disabling these for ROCm on master for upstreaming. But I'll only do that **after BF16 gets proper support** since this discrepancy adds way too many different code paths between ROCm and CUDA. Other than that conversion worked quite well, for the majority of the project I only had to change a couple defines. Only the `conv1d OP` required a custom implementation for MIOpen (hipDNN isn't maintained anymore).
 
 ## Tested libraries
 
@@ -72,13 +76,12 @@ I included a small benchmark script in this CT2 fork. You need to download a tes
 wget -P "./tests/data" https://github.com/SYSTRAN/faster-whisper/raw/master/tests/data/physicsworks.wav 
 ```
 
-Then you should be able to run. This per default does just one testrun with the medium model
+Then you should be able to run 
 
 ```bash
 python faster_whisper_bench.py
 ```
-
-I'm getting around `10.9-11.0s` on my RX6800 (with model loading included `13.7-13.8s`).
+This per default does just one testrun with the medium model. I'm getting around `10.9-11.0s` on my RX6800 (with model loading included `13.7-13.8s`).
 
 
 ### whisperX
@@ -87,8 +90,8 @@ System dependency is just ffmpeg. Either use your system package manager or with
 
 ```bash
 pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.1 --force-reinstall
-pip3 install transformers pandas nltk pyannote.audio==3.1.1 faster_whisper==1.0.1 -U
-pip3 install whisperX --no-deps
+pip3 install transformers pandas nltk pyannote.audio==3.1.1 faster-whisper==1.0.1 -U
+pip3 install whisperx --no-deps
 ```
 Python dependencies are a mess here since versions aren't really pinned and the image doesn't come with `torchaudio`. The commands above worked for me though, but will take a while since this reinstalls all python dependencies.
 
