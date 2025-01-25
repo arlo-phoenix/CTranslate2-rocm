@@ -6,6 +6,7 @@
 #ifdef CT2_USE_HIP
 #include <hip/hip_fp16.h>
 #include <hip/hip_bf16.h>
+#include <hip/hip_runtime.h>
 
 #define __nv_bfloat16 __hip_bfloat16
 __device__ inline void __syncwarp(uint32_t mask){} //TODO: 6.1 should have this but it doesn't?
@@ -414,7 +415,7 @@ namespace ctranslate2 {
     // They help define row-wise reduction where each block handles a single row.
 
 #ifdef CT2_USE_HIP
-  #define C10_WARP_SIZE 64 //TODO: detect arch to set 32 for rdna
+  #define C10_WARP_SIZE warpSize
 #else
   #define C10_WARP_SIZE 32
 #endif
